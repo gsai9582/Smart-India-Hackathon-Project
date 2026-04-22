@@ -1,0 +1,1 @@
+# headless dashboard placeholder
