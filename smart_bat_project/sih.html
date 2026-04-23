@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏓 Table Tennis Pong Game - Complete Bundle</title>
+    <style>
+        /* ===== GLOBAL STYLES ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: white;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* ===== GAME CONTAINER ===== */
+        .game-container {
+            text-align: center;
+            position: relative;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+        }
+
+        /* ===== CANVAS - MAIN GAME AREA ===== */
+        #gameCanvas {
+            border: 4px solid #fff;
+            border-radius: 15px;
+            background: linear-gradient(180deg, #2d5a2a 0%, #1e4a1e 100%);
+            box-shadow: inset 0 0 50px rgba(255, 255, 255, 0.1);
+            cursor: none;
+        }
+
+        /* ===== UI ELEMENTS ===== */
+        .ui-panel {
+            margin: 20px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px #fff;
+        }
+
+        .score {
+            font-size: 2rem;
+            color: #00ff88;
+            text-shadow: 0 0 20px #00ff88;
+        }
+
+        .winner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 30px #ffd700;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        .winner.show {
+            opacity: 1;
+        }
+
+        /* ===== CONTROLS INFO ===== */
+        .controls {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .controls span {
+            color: #00ff88;
+            font-weight: bold;
+        }
+
+        /* ===== RESPONSIVE DESIGN ===== */
+        @media (max-width: 768px) {
+            .ui-panel {
+                flex-direction: column;
+                gap: 10px;
+                font-size: 1.2rem;
+            }
+            
+            .score {
+                font-size: 1.5rem;
+            }
+            
+            #gameCanvas {
+                width: 95vw;
+                height: 60vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- ===== MAIN GAME STRUCTURE ===== -->
+    <div class="game-container">
+        <!-- SCORE DISPLAY -->
+        <div class="ui-panel">
+            <div>Player 1: <span class="score" id="score1">0</span></div>
+            <div>Player 2: <span class="score" id="score2">0</span></div>
+        </div>
+
+        <!-- GAME CANVAS -->
+        <canvas id="gameCanvas" width="1000" height="500"></canvas>
+
+        <!-- WINNER ANNOUNCEMENT -->
+        <div id="winnerText" class="winner"></div>
+
+        <!-- CONTROLS INFO -->
+        <div class="controls">
+            Player 1: <span>W/S</span> or <span>↑/↓</span> | Player 2: <span>Arrow Keys</span> | 
+            Press <span>SPACE</span> to restart
+        </div>
+    </div>
+
+    <script>
+        // ===== GAME VARIABLES =====
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const score1El = document.getElementById('score1');
+        const score2El = document.getElementById('score2');
+        const winnerText = document.getElementById('winnerText');
+
+        // Game state
+        let gameState = {
+            // Scores
+            score1: 0,
+            score2: 0,
+            
+            // Ball properties
+            ball: {
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                radius: 10,
+                vx: 5,
+                vy: 3,
+                speed: 5
+            },
+            
+            // Paddles
+            paddle1: {
+                x: 20,
+                y: canvas.height / 2 - 60,
+                width: 15,
+                height: 120,
+                vy: 0,
+                speed: 6
+            },
+            
+            paddle2: {
+                x: canvas.width - 35,
+                y: canvas.height / 2 - 60,
+                width: 15,
+                height: 120,
+                vy: 0,
+                speed: 6
+            },
+            
+            // Game state flags
+            gameRunning: true,
+            winner: null
+        };
+
+        // Input handling
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // ===== HELPER FUNCTIONS =====
+        /**
+         * Updates canvas size responsively
+         */
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            
+            // Reset positions after resize
+            gameState.paddle1.y = canvas.height / 2 - gameState.paddle1.height / 2;
+            gameState.paddle2.y = canvas.height / 2 - gameState.paddle2.height / 2;
+            gameState.ball.x = canvas.width / 2;
+            gameState.ball.y = canvas.height / 2;
+        }
+
+        /**
+         * Draws table tennis table background
+         */
+        function drawTable() {
+            // Table gradient (green)
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#2d5a2a');
+            gradient.addColorStop(0.5, '#1e4a1e');
+            gradient.addColorStop(1, '#2d5a2a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // White border lines
+            ctx.lineWidth = 8;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#ffffff';
+            ctx.shadowColor = 'rgba(255,255,255,0.5)';
+            ctx.shadowBlur = 10;
+            ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+            ctx.shadowBlur = 0;
+
+            // Center line (net)
+            ctx.lineWidth = 4;
+            ctx.setLineDash([10, 10]);
+            ctx.strokeStyle = '#ffffff66';
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2 - 2, 20);
+            ctx.lineTo(canvas.width / 2 - 2, canvas.height - 20);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Corner lines
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#ffffff88';
+            ctx.beginPath();
+            ctx.moveTo(20, 20);
+            ctx.lineTo(40, 40);
+            ctx.moveTo(canvas.width - 20, 20);
+            ctx.lineTo(canvas.width - 40, 40);
+            ctx.stroke();
+        }
+
+        /**
+         * Draws a paddle with realistic styling
+         */
+        function drawPaddle(paddle, isLeft) {
+            ctx.save();
+            ctx.translate(paddle.x + paddle.width / 2, paddle.y + paddle.height / 2);
+            
+            // Paddle rubber (red rubber surface)
+            const rubberGradient = ctx.createRadialGradient(0, -20, 0, 0, 0, 40);
+            rubberGradient.addColorStop(0, '#ff4444');
+            rubberGradient.addColorStop(0.7, '#cc3333');
+            rubberGradient.addColorStop(1, '#990000');
+            
+            ctx.fillStyle = rubberGradient;
+            ctx.shadowColor = '#ff6666';
+            ctx.shadowBlur = 15;
+            ctx.fillRect(-paddle.width/2 - 2, -paddle.height/2 - 15, paddle.width + 4, paddle.height + 30);
+            ctx.shadowBlur = 0;
+            
+            // Paddle handle (wooden)
+            const handleGradient = ctx.createLinearGradient(0, 20, 0, 60);
+            handleGradient.addColorStop(0, '#8B4513');
+            handleGradient.addColorStop(1, '#654321');
+            
+            ctx.fillStyle = handleGradient;
+            ctx.shadowColor = '#8B4513';
+            ctx.shadowBlur = 8;
+            ctx.fillRect(-paddle.width/2 - 4, paddle.height/2, paddle.width + 8, 40);
+            ctx.shadowBlur = 0;
+            
+            ctx.restore();
+        }
+
+        /**
+         * Draws glowing table tennis ball
+         */
+        function drawBall(ball) {
+            ctx.save();
+            ctx.translate(ball.x, ball.y);
+            
+            // Multiple glowing layers
+            ctx.shadowColor = '#ffffff';
+            ctx.shadowBlur = 30;
+            
+            // Outer glow
+            const outerGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, ball.radius + 15);
+            outerGlow.addColorStop(0, 'rgba(255,255,255,0.8)');
+            outerGlow.addColorStop(0.8, 'rgba(255,165,0,0.3)');
+            outerGlow.addColorStop(1, 'rgba(255,165,0,0)');
+            ctx.fillStyle = outerGlow;
+            ctx.beginPath();
+            ctx.arc(0, 0, ball.radius + 15, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Inner glow
+            ctx.shadowBlur = 20;
+            const innerGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, ball.radius + 5);
+            innerGlow.addColorStop(0, '#ffffff');
+            innerGlow.addColorStop(0.6, '#ffdd44');
+            innerGlow.addColorStop(1, '#ffaa00');
+            ctx.fillStyle = innerGlow;
+            ctx.beginPath();
+            ctx.arc(0, 0, ball.radius + 5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Ball surface
+            ctx.shadowBlur = 0;
+            const ballGradient = ctx.createRadialGradient(-5, -5, 0, 0, 0, ball.radius);
+            ballGradient.addColorStop(0, '#ffffff');
+            ballGradient.addColorStop(0.7, '#ffdd44');
+            ballGradient.addColorStop(1, '#ffaa00');
+            ctx.fillStyle = ballGradient;
+            ctx.beginPath();
+            ctx.arc(0, 0, ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Ball seam (realistic detail)
+            ctx.strokeStyle = '#ff8800';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.arc(3, -3, 3, 0.2, Math.PI * 0.8);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+
+        /**
+         * Updates paddle positions based on input
+         */
+        function updatePaddles() {
+            // Player 1 (Left paddle) - W/S or Arrow Up/Down
+            if (keys['KeyW'] || keys['ArrowUp']) {
+                gameState.paddle1.vy = -gameState.paddle1.speed;
+            } else if (keys['KeyS'] || keys['ArrowDown']) {
+                gameState.paddle1.vy = gameState.paddle1.speed;
+            } else {
+                gameState.paddle1.vy *= 0.9; // Friction
+            }
+
+            // Player 2 (Right paddle) - Arrow keys
+            if (keys['ArrowUp']) {
+                gameState.paddle2.vy = -gameState.paddle2.speed;
+            } else if (keys['ArrowDown']) {
+                gameState.paddle2.vy = gameState.paddle2.speed;
+            } else {
+                gameState.paddle2.vy *= 0.9; // Friction
+            }
+
+            // Move paddles
+            gameState.paddle1.y += gameState.paddle1.vy;
+            gameState.paddle2.y += gameState.paddle2.vy;
+
+            // Paddle boundaries
+            const paddle1Bounds = {
+                top: 30,
+                bottom: canvas.height - 70
+            };
+            const paddle2Bounds = {
+                top: 30,
+                bottom: canvas.height - 70
+            };
+
+            gameState.paddle1.y = Math.max(paddle1Bounds.top, 
+                                        Math.min(paddle1Bounds.bottom - gameState.paddle1.height, 
+                                                gameState.paddle1.y));
+            gameState.paddle2.y = Math.max(paddle2Bounds.top, 
+                                        Math.min(paddle2Bounds.bottom - gameState.paddle2.height, 
+                                                gameState.paddle2.y));
+        }
+
+        /**
+         * Updates ball physics and collision detection
+         */
+        function updateBall() {
+            if (!gameState.gameRunning) return;
+
+            // Ball movement
+            gameState.ball.x += gameState.ball.vx;
+            gameState.ball.y += gameState.ball.vy;
+
+            // Ball collision with top/bottom walls
+            const tableBounds = { top: 30, bottom: canvas.height - 30 };
+            if (gameState.ball.y - gameState.ball.radius < tableBounds.top || 
+                gameState.ball.y + gameState.ball.radius > tableBounds.bottom) {
+                gameState.ball.vy *= -1;
+                // Ensure ball stays in bounds
+                gameState.ball.y = Math.max(tableBounds.top + gameState.ball.radius,
+                                        Math.min(tableBounds.bottom - gameState.ball.radius,
+                                                gameState.ball.y));
+            }
+
+            // Ball collision with paddles
+            function checkPaddleCollision(paddle) {
+                const dx = gameState.ball.x - (paddle.x + paddle.width / 2);
+                const dy = gameState.ball.y - (paddle.y + paddle.height / 2);
+                
+                if (Math.abs(dx) < paddle.width / 2 + gameState.ball.radius &&
+                    Math.abs(dy) < paddle.height / 2 + gameState.ball.radius) {
+                    
+                    // Calculate hit position (top/bottom/center)
+                    const hitPos = dy / (paddle.height / 2);
+                    
+                    // Reverse X velocity and add paddle influence
+                    gameState.ball.vx *= -1.05; // Speed increase
+                    gameState.ball.vy = hitPos * 5;
+                    
+                    // Move ball away from paddle to prevent sticking
+                    gameState.ball.x += gameState.ball.vx * 0.2;
+                }
+            }
+
+            checkPaddleCollision(gameState.paddle1);
+            checkPaddleCollision(gameState.paddle2);
+
+            // Scoring (ball goes out left/right)
+            const paddleBuffer = 20;
+            if (gameState.ball.x < 0 + paddleBuffer) {
+                // Player 2 scores
+                gameState.score2++;
+                resetBall(true);
+            } else if (gameState.ball.x > canvas.width - paddleBuffer) {
+                // Player 1 scores
+                gameState.score1++;
+                resetBall(false);
+            }
+        }
+
+        /**
+         * Resets ball to center after scoring
+         */
+        function resetBall(player1Scored) {
+            gameState.ball.x = canvas.width / 2;
+            gameState.ball.y = canvas.height / 2;
+            
+            // Serve direction alternates
+            const direction = player1Scored ? 1 : -1;
+            gameState.ball.vx = direction * (3 + Math.random() * 3);
+            gameState.ball.vy = (Math.random() - 0.5) * 4;
+        }
+
+        /**
+         * Checks for game win condition (first to 11 points)
+         */
+        function checkWinner() {
+            if (gameState.score1 >= 11 || gameState.score2 >= 11) {
+                gameState.gameRunning = false;
+                gameState.winner = gameState.score1 >= 11 ? 'Player 1' : 'Player 2';
+                winnerText.textContent = ${gameState.winner} WINS!;
+                winnerText.classList.add('show');
+            }
+        }
+
+        /**
+         * Updates UI scores
+         */
+        function updateUI() {
+            score1El.textContent = gameState.score1;
+            score2El.textContent = gameState.score2;
+        }
+
+        /**
+         * Main game loop - 60 FPS
+         */
+        function gameLoop() {
+            // Clear canvas with fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update game objects
+            updatePaddles();
+            updateBall();
+            checkWinner();
+            updateUI();
+
+            // Draw everything
+            drawTable();
+            drawPaddle(gameState.paddle1, true);
+            drawPaddle(gameState.paddle2, false);
+            drawBall(gameState.ball);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        /**
+         * Restart game
+         */
+        function restartGame() {
+            gameState.score1 = 0;
+            gameState.score2 = 0;
+            gameState.gameRunning = true;
+            gameState.winner = null;
+            winnerText.classList.remove('show');
+            resetBall(true);
+            updateUI();
+        }
+
+        // ===== EVENT LISTENERS =====
+        window.addEventListener('resize', resizeCanvas);
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                restartGame();
+            }
+        });
+
+        // ===== INITIALIZE GAME =====
+        resizeCanvas();
+        resetBall(true);
+        gameLoop();
+
+        // Log instructions to console
+        console.log(`
+🏓 TABLE TENNIS PONG GAME - CONTROLS:
+• Player 1 (Left): W/S keys or ↑/↓ arrows
+• Player 2 (Right): ↑/↓ arrow keys  
+• SPACEBAR = Restart game
+• First to 11 points wins!
+
+Game Features:
+✅ Responsive design
+✅ Realistic table tennis physics
+✅ Glowing ball effects
+✅ Paddle collision with angle
+✅ Smooth 60 FPS animation
+✅ Professional table tennis styling
+        `);
+    </script>
+</body>
+</html>
